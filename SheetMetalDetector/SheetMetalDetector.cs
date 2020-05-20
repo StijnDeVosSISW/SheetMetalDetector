@@ -335,6 +335,11 @@ namespace SheetMetalDetector
 
 
         // CUSTOM METHODS & LOGIC
+        /// <summary>
+        /// Checks whether the input CAD part has any Sheet Metal bodies in it. If yes, then this CAD part is considered as a Sheet Metal object.
+        /// </summary>
+        /// <param name="targCAD">Input CAD part</param>
+        /// <returns></returns>
         public bool DetectSheetMetal(NXOpen.Part targCAD)
         {
             // Get Features
