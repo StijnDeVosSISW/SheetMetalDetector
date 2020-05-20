@@ -18,6 +18,10 @@ namespace SheetMetalDetector
         private NXOpen.BlockStyler.Group group0;// Block type: Group
         private NXOpen.BlockStyler.ListBox LB_SelObjs;// Block type: List Box
         private NXOpen.BlockStyler.Button button_Verify;// Block type: Button
+        private static ListingWindow lw = null;
+
+        // Custom variables
+        private List<string> allPartNames = new List<string>();
 
         //------------------------------------------------------------------------------
         //Constructor for NX Styler class
@@ -28,6 +32,7 @@ namespace SheetMetalDetector
             {
                 theSession = Session.GetSession();
                 theUI = UI.GetUI();
+                lw = theSession.ListingWindow;
                 theDlxFileName = "SheetMetalDetector.dlx";
                 theDialog = theUI.CreateDialog(theDlxFileName);
                 theDialog.AddUpdateHandler(new NXOpen.BlockStyler.BlockDialog.Update(update_cb));
@@ -196,6 +201,46 @@ namespace SheetMetalDetector
             try
             {
                 //---- Enter your callback code here -----
+
+                // Initializations
+                lw.Open();
+                lw.WriteFullline(
+                    " ---------------------- " + Environment.NewLine + 
+                    "| SHEET METAL DETECTOR |" + Environment.NewLine + 
+                    " ---------------------- ");
+                button_Verify.Enable = false;
+                button_Verify.Tooltip = "Select at least one object to verify";
+
+                // Populate ListBox with current opened objects
+                foreach (NXOpen.NXObject part in theSession.Parts)
+                {
+                    string prefix = "";
+                    switch (part.GetType().ToString())
+                    {
+                        case "NXOpen.Part":
+                            prefix = "CAD   |  ";
+                            break;
+
+                        case "NXOpen.CAE.FemPart":
+                            prefix = "FEM   |  ";
+                            break;
+
+                        case "NXOpen.CAE.AssyFemPart":
+                            prefix = "AFEM |  ";
+                            break;
+
+                        case "NXOpen.CAE.SimPart":
+                            prefix = "SIM   |  ";
+                            break;
+
+                        default:
+                            break;
+                    }
+
+                    allPartNames.Add(prefix + part.Name);
+                }
+
+                LB_SelObjs.SetListItems(allPartNames.ToArray());
             }
             catch (Exception ex)
             {
@@ -214,10 +259,38 @@ namespace SheetMetalDetector
                 if (block == LB_SelObjs)
                 {
                     //---------Enter your code here-----------
+                    button_Verify.Enable = LB_SelObjs.GetSelectedItems().Length > 0 ? true : false;
+                    button_Verify.Tooltip = button_Verify.Enable ? "" : "Select at least one object to verify";
                 }
                 else if (block == button_Verify)
                 {
                     //---------Enter your code here-----------
+                    foreach (int objIndex in LB_SelObjs.GetSelectedItems())
+                    {
+                        // Get selected object
+                        NXOpen.NXObject targObj = theSession.Parts.ToArray()[objIndex];
+                        lw.WriteFullline(Environment.NewLine +
+                            targObj.Name.ToUpper());
+
+                        // Check if CAD object
+                        if (targObj.GetType().ToString() != "NXOpen.Part")
+                        {
+                            lw.WriteFullline("   -> Skipped:  not a CAD object, but of type = " + targObj.GetType().ToString());
+                            continue;
+                        }
+
+                        NXOpen.Part targCAD = (NXOpen.Part)targObj;
+
+                        // Check if target CAD object is a Sheet Metal object
+                        if (DetectSheetMetal(targCAD))
+                        {
+                            lw.WriteFullline("   -> SHEETMETAL");
+                        }
+                        else
+                        {
+                            lw.WriteFullline("   -> normal CAD");
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -257,6 +330,28 @@ namespace SheetMetalDetector
                 theUI.NXMessageBox.Show("Block Styler", NXMessageBox.DialogType.Error, ex.ToString());
             }
             return plist;
+        }
+
+
+
+        // CUSTOM METHODS & LOGIC
+        public bool DetectSheetMetal(NXOpen.Part targCAD)
+        {
+            // Get Features
+            NXOpen.Features.FeatureCollection myFeatures = targCAD.Features;
+
+            // Get Sheet Metal Manager
+            NXOpen.Features.SheetMetal.SheetmetalManager mySheetMetalManager = myFeatures.SheetmetalManager;
+
+            // Check if one of the bodies in CAD part is a Sheet Metal Body
+            foreach (NXOpen.Body body in targCAD.Bodies)
+            {
+                if (mySheetMetalManager.IsSheetmetalBody(body))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }
